@@ -1,0 +1,466 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+enum UserRole {
+  FARMER
+  LOGISTICS
+  RETAIL
+  ADMIN
+}
+
+enum CompanyType {
+  FARM
+  LOGISTICS
+  RETAIL
+  PROCESSOR
+}
+
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  companyType CompanyType
+  country     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       User[]
+  batches     Batch[]
+  routes      Route[]
+  weeklyMetrics WeeklyMetric[]
+  stores      Store[]
+
+  @@index([companyType])
+  @@map("companies")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  companyId    String   @map("company_id")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actions      Action[]
+  feedbacks    Feedback[]
+
+  @@index([email])
+  @@index([companyId])
+  @@index([role])
+  @@map("users")
+}
+
+// ============================================
+// COMMODITY & BATCH
+// ============================================
+
+enum CommodityCategory {
+  FRUIT
+  VEGETABLE
+  MEAT
+  DAIRY
+  GRAIN
+  OTHER
+}
+
+model Commodity {
+  id               String   @id @default(uuid())
+  name             String
+  category         CommodityCategory
+  baseShelfLifeDays Int     @map("base_shelf_life_days")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  batches          Batch[]
+
+  @@index([category])
+  @@map("commodities")
+}
+
+enum BatchStatus {
+  ACTIVE
+  SOLD
+  DOWNGRADED
+  SPOILED
+  IN_TRANSIT
+}
+
+model Batch {
+  id              String      @id @default(uuid())
+  commodityId     String      @map("commodity_id")
+  ownerCompanyId  String      @map("owner_company_id")
+  harvestDate     DateTime?   @map("harvest_date")
+  quantity        Decimal     @db.Decimal(10, 2)
+  unit            String      // kg, box, piece, etc.
+  currentLocation String?     @map("current_location")
+  status          BatchStatus @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  commodity       Commodity   @relation(fields: [commodityId], references: [id])
+  ownerCompany    Company     @relation(fields: [ownerCompanyId], references: [id])
+  sensorReadings  SensorReading[]
+  qualityScores   QualityScore[]
+  shelfLifePredictions ShelfLifePrediction[]
+  recommendations Recommendation[]
+  batchRoutes     BatchRoute[]
+  retailInventories RetailInventory[]
+  outcomes        Outcome[]
+
+  @@index([commodityId])
+  @@index([ownerCompanyId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("batches")
+}
+
+// ============================================
+// SENSOR & ENVIRONMENT DATA
+// ============================================
+
+enum SensorType {
+  TEMPERATURE
+  HUMIDITY
+  PH
+  IMAGING
+  MANUAL
+  GAS
+  PRESSURE
+}
+
+model Sensor {
+  id          String   @id @default(uuid())
+  sensorType  SensorType @map("sensor_type")
+  model       String?
+  installedAt String?   @map("installed_at")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  readings    SensorReading[]
+
+  @@index([sensorType])
+  @@index([isActive])
+  @@map("sensors")
+}
+
+model SensorReading {
+  id          String   @id @default(uuid())
+  batchId     String   @map("batch_id")
+  sensorId    String   @map("sensor_id")
+  temperature Float?
+  humidity    Float?
+  ph          Float?
+  gasLevel    Float?   @map("gas_level")
+  pressure    Float?
+  imageUrl    String?  @map("image_url")
+  notes       String?
+  timestamp   DateTime @default(now())
+
+  // Relations
+  batch       Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sensor      Sensor   @relation(fields: [sensorId], references: [id])
+
+  @@index([batchId])
+  @@index([sensorId])
+  @@index([timestamp])
+  @@map("sensor_readings")
+}
+
+// ============================================
+// QUALITY & SHELF LIFE PREDICTION
+// ============================================
+
+model QualityScore {
+  id          String   @id @default(uuid())
+  batchId     String   @map("batch_id")
+  qualityScore Float   @map("quality_score") // 0-100
+  confidence  Float    // 0-1
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  // Relations
+  batch       Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([calculatedAt])
+  @@map("quality_scores")
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model ShelfLifePrediction {
+  id            String    @id @default(uuid())
+  batchId       String    @map("batch_id")
+  remainingHours Float    @map("remaining_hours")
+  minEstimate   Float     @map("min_estimate")
+  maxEstimate   Float     @map("max_estimate")
+  riskLevel     RiskLevel @map("risk_level")
+  calculatedAt  DateTime  @default(now()) @map("calculated_at")
+
+  // Relations
+  batch         Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([riskLevel])
+  @@index([calculatedAt])
+  @@map("shelf_life_predictions")
+}
+
+// ============================================
+// RECOMMENDATION & ACTION SYSTEM
+// ============================================
+
+enum RecommendationType {
+  SELL_FAST
+  STORE
+  REROUTE
+  DOWNGRADE
+  DISCOUNT
+  PRIORITY_SHIP
+}
+
+enum Priority {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Recommendation {
+  id                String            @id @default(uuid())
+  batchId           String            @map("batch_id")
+  recommendationType RecommendationType @map("recommendation_type")
+  explanation       String?
+  priority          Priority
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  batch             Batch             @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  actions           Action[]
+
+  @@index([batchId])
+  @@index([priority])
+  @@index([recommendationType])
+  @@index([createdAt])
+  @@map("recommendations")
+}
+
+enum ActionTaken {
+  ACCEPTED
+  MODIFIED
+  IGNORED
+  PENDING
+}
+
+model Action {
+  id          String      @id @default(uuid())
+  recommendationId String  @map("recommendation_id")
+  userId      String      @map("user_id")
+  actionTaken ActionTaken @map("action_taken")
+  notes       String?
+  executedAt  DateTime?   @map("executed_at")
+  createdAt   DateTime    @default(now())
+
+  // Relations
+  recommendation Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id])
+
+  @@index([recommendationId])
+  @@index([userId])
+  @@index([actionTaken])
+  @@index([executedAt])
+  @@map("actions")
+}
+
+// ============================================
+// LOGISTICS & ROUTING
+// ============================================
+
+model Route {
+  id            String   @id @default(uuid())
+  fromLocation  String   @map("from_location")
+  toLocation    String   @map("to_location")
+  distanceKm    Float    @map("distance_km")
+  estimatedTimeHr Float  @map("estimated_time_hr")
+  companyId     String?  @map("company_id")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  company       Company? @relation(fields: [companyId], references: [id])
+  batchRoutes   BatchRoute[]
+
+  @@index([companyId])
+  @@map("routes")
+}
+
+enum RouteStatus {
+  PLANNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+model BatchRoute {
+  id        String      @id @default(uuid())
+  batchId   String      @map("batch_id")
+  routeId   String      @map("route_id")
+  status    RouteStatus @default(PLANNED)
+  startedAt DateTime?   @map("started_at")
+  endedAt   DateTime?   @map("ended_at")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  batch     Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  route     Route       @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([routeId])
+  @@index([status])
+  @@map("batch_routes")
+}
+
+// ============================================
+// RETAIL & DYNAMIC PRICING
+// ============================================
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  location  String?
+  companyId String   @map("company_id")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inventories RetailInventory[]
+
+  @@index([companyId])
+  @@map("stores")
+}
+
+model RetailInventory {
+  id        String   @id @default(uuid())
+  batchId   String   @map("batch_id")
+  storeId   String   @map("store_id")
+  stockQty  Decimal  @map("stock_qty") @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  pricingRecommendations PricingRecommendation[]
+
+  @@index([batchId])
+  @@index([storeId])
+  @@map("retail_inventories")
+}
+
+model PricingRecommendation {
+  id              String   @id @default(uuid())
+  inventoryId     String   @map("inventory_id")
+  originalPrice   Decimal  @map("original_price") @db.Decimal(10, 2)
+  recommendedPrice Decimal @map("recommended_price") @db.Decimal(10, 2)
+  discountPct     Float    @map("discount_pct")
+  reason          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  inventory       RetailInventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryId])
+  @@index([createdAt])
+  @@map("pricing_recommendations")
+}
+
+// ============================================
+// FEEDBACK LOOP
+// ============================================
+
+model Feedback {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  batchId       String?  @map("batch_id")
+  feedbackType  String   @map("feedback_type") // inventory_stock, spoilage_misread, rerouting, pricing
+  message       String
+  createdAt     DateTime @default(now())
+
+  // Relations
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([batchId])
+  @@index([feedbackType])
+  @@map("feedbacks")
+}
+
+model Outcome {
+  id            String   @id @default(uuid())
+  batchId       String   @map("batch_id")
+  soldQty       Decimal? @map("sold_qty") @db.Decimal(10, 2)
+  wastedQty     Decimal? @map("wasted_qty") @db.Decimal(10, 2)
+  avgSellPrice  Decimal? @map("avg_sell_price") @db.Decimal(10, 2)
+  spoilageReason String? @map("spoilage_reason")
+  recordedAt    DateTime @default(now()) @map("recorded_at")
+
+  // Relations
+  batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([recordedAt])
+  @@map("outcomes")
+}
+
+// ============================================
+// ANALYTICS
+// ============================================
+
+model WeeklyMetric {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  weekStart           DateTime @map("week_start")
+  wasteReductionPct   Float?   @map("waste_reduction_pct")
+  revenueUpliftPct    Float?   @map("revenue_uplift_pct")
+  avgShelfLifeGainHr  Float?   @map("avg_shelf_life_gain_hr")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, weekStart])
+  @@index([companyId])
+  @@index([weekStart])
+  @@map("weekly_metrics")
+}
+
