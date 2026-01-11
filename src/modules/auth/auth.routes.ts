@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authController from './auth.controller';
 import { authenticate } from '../../middleware/auth';
+import { uploadProfilePicture } from '../../middleware/upload';
 
 const router = Router();
 
@@ -121,6 +122,64 @@ router.post('/login', authController.login.bind(authController));
  *         description: Unauthorized
  */
 router.get('/profile', authenticate, authController.getProfile.bind(authController));
+
+/**
+ * @swagger
+ * /auth/profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               profilePicture:
+ *                 type: string
+ *                 format: binary
+ *                 description: Profile picture image (JPEG, PNG, GIF, WebP, max 5MB)
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 role:
+ *                   type: string
+ *                 profilePicture:
+ *                   type: string
+ *                   nullable: true
+ *                 company:
+ *                   $ref: '#/components/schemas/Company'
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ */
+router.put(
+  '/profile',
+  authenticate,
+  uploadProfilePicture.single('profilePicture'),
+  authController.updateProfile.bind(authController)
+);
 
 export default router;
 

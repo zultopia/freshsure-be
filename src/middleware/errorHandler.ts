@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 
@@ -15,11 +15,9 @@ export class AppError extends Error {
 }
 
 export const errorHandler = (
-  err: Error | AppError | ZodError | Prisma.PrismaClientKnownRequestError,
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+  err: Error | AppError | ZodError | Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientInitializationError,
+  _req: Request,
+  res: Response): void => {
   // Zod validation errors
   if (err instanceof ZodError) {
     res.status(400).json({
@@ -28,6 +26,15 @@ export const errorHandler = (
         path: e.path.join('.'),
         message: e.message,
       })),
+    });
+    return;
+  }
+
+  // Prisma initialization errors (database connection issues)
+  if (err instanceof Prisma.PrismaClientInitializationError) {
+    res.status(503).json({
+      error: 'Database connection error',
+      message: 'Cannot connect to database. Please check if the database server is running.',
     });
     return;
   }
@@ -48,12 +55,32 @@ export const errorHandler = (
       });
       return;
     }
+    if (err.code === 'P1001') {
+      res.status(503).json({
+        error: 'Database connection error',
+        message: 'Cannot reach database server. Please check your database configuration.',
+      });
+      return;
+    }
   }
 
   // App errors
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       error: err.message,
+    });
+    return;
+  }
+
+  // Check for database connection errors in error message
+  if (err.message && (
+    err.message.includes('Can\'t reach database server') ||
+    err.message.includes('P1001') ||
+    err.message.includes('connect ECONNREFUSED')
+  )) {
+    res.status(503).json({
+      error: 'Database connection error',
+      message: 'Cannot connect to database server. Please ensure PostgreSQL is running and DATABASE_URL is correct.',
     });
     return;
   }

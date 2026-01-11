@@ -24,8 +24,14 @@ cp .env.example .env
 
 Edit `.env` dan isi dengan konfigurasi Anda:
 
+**Untuk Supabase (Recommended):**
 ```env
-DATABASE_URL="postgresql://username:password@localhost:5432/freshsure?schema=public"
+# Connection pooling untuk app runtime (dari Supabase Dashboard → Settings → Database → Connection pooling)
+DATABASE_URL="postgresql://postgres:[PASSWORD]@[PROJECT-REF].pooler.supabase.com:6543/postgres?pgbouncer=true"
+
+# Direct connection untuk migrations (dari Supabase Dashboard → Settings → Database → Connection string → URI)
+DIRECT_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?schema=public"
+
 JWT_SECRET="your-super-secret-jwt-key-change-in-production"
 JWT_EXPIRES_IN="7d"
 PORT=3000
@@ -33,7 +39,34 @@ NODE_ENV=development
 CORS_ORIGIN="http://localhost:3000"
 ```
 
+**Untuk PostgreSQL Local:**
+```env
+DATABASE_URL="postgresql://username:password@localhost:5432/freshsure?schema=public"
+DIRECT_URL="postgresql://username:password@localhost:5432/freshsure?schema=public"
+JWT_SECRET="your-super-secret-jwt-key-change-in-production"
+JWT_EXPIRES_IN="7d"
+PORT=3000
+NODE_ENV=development
+CORS_ORIGIN="http://localhost:3000"
+```
+
+**Catatan Penting:**
+- `DATABASE_URL`: Digunakan oleh aplikasi saat runtime (connection pooling untuk performa lebih baik)
+- `DIRECT_URL`: Digunakan oleh Prisma untuk migrations (`prisma migrate dev`)
+- Untuk Supabase, pastikan menggunakan connection pooling untuk `DATABASE_URL` dan direct connection untuk `DIRECT_URL`
+
 ### 3. Setup Database
+
+#### Option A: Menggunakan Supabase (Recommended)
+
+1. Buat akun di [Supabase](https://supabase.com)
+2. Buat project baru
+3. Buka **Settings** → **Database**
+4. Untuk `DATABASE_URL`: Copy dari **Connection pooling** → **Session mode** atau **Transaction mode**
+5. Untuk `DIRECT_URL`: Copy dari **Connection string** → **URI**
+6. Paste ke file `.env` sesuai dengan variabelnya
+
+#### Option B: PostgreSQL Local
 
 Buat database PostgreSQL:
 
