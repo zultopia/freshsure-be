@@ -1,5 +1,4 @@
 import prisma from '../../config/database';
-import { AppError } from '../../middleware/errorHandler';
 import { Prisma } from '@prisma/client';
 
 export class RetailService {

@@ -1,5 +1,4 @@
 import prisma from '../../config/database';
-import { AppError } from '../../middleware/errorHandler';
 
 export class AnalyticsService {
   async createWeeklyMetric(data: {

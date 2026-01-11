@@ -74,7 +74,11 @@ export class CompaniesService {
   }) {
     return prisma.company.update({
       where: { id },
-      data,
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.companyType && { companyType: data.companyType as any }),
+        ...(data.country !== undefined && { country: data.country }),
+      },
     });
   }
 

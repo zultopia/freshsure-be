@@ -75,7 +75,11 @@ export class CommoditiesService {
   }) {
     return prisma.commodity.update({
       where: { id },
-      data,
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.category && { category: data.category as any }),
+        ...(data.baseShelfLifeDays !== undefined && { baseShelfLifeDays: data.baseShelfLifeDays }),
+      },
     });
   }
 
